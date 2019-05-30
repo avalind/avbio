@@ -12,7 +12,7 @@ class Variant(object):
         self.ref = ref
         self.alt = alt
         self.samples = []
-        self.sample_info = []
+        self.sample_info = {}
 
     def __str__(self):
         return "<Variant @ chr {0}, {1}, ref={2}, alt={3}, samples={4}>".format(
@@ -38,7 +38,13 @@ class Variant(object):
     # @TODO change this to a dictionary for easy lookup
     # when generating the vcf file.
     def add_info(self, sample, alt_reads, tot_reads):
-        self.sample_info.append((sample, alt_reads, tot_reads))
+        self.sample_info[sample] = (alt_reads, tot_reads)
+
+    def present_in_sample(self, s):
+        return s in self.sample_info.keys()
+
+    def get_sample_info(self, s):
+        return self.sample_info[s]
 
 
 def fix_indices(df, colname="SampleID"):
@@ -89,20 +95,25 @@ def generate_vcf_file(name, variants, all_samples):
     header += "\n"
 
     for v in variants:
-        samples = sorted(v.sample_info, key=lambda s: s[0])
         header += "{0}\t{1}\t.\t{2}\t{3}\t-1\tPASS\t".format(
             v.chrom,
             v.pos,
             v.ref,
             v.alt)
         header += "SOMATIC\tGT:AD:DP\t"
-        for sample in samples:
-            header+="./.:{0}:{1}".format(
-                sample[1],
-                sample[1] + sample[2])
+        for sample in all_samples:
+            if v.present_in_sample(sample):
+                alt_reads, tot_reads = v.get_sample_info(sample)
+                header += "0/1:{0}:{1}\t".format(
+                    alt_reads,
+                    alt_reads + tot_reads)
+            else:
+                header += "0/0:.:.\t"
         header += "\n"
 
-    print(header)
+    output_file = "{0}/{1}.vcf".format(outdir, name)
+    with open(output_file, "w") as handle:
+        handle.write(header)
 
 
 def main():
