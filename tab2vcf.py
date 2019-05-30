@@ -1,8 +1,6 @@
 #!/usr/bin/env python
-import sys
+import argparse
 import pandas as pd
-
-outdir = "vcfs/"
 
 
 class Variant(object):
@@ -35,9 +33,9 @@ class Variant(object):
         if new_sample not in self.samples:
             self.samples.append(new_sample)
 
-    # @TODO change this to a dictionary for easy lookup
-    # when generating the vcf file.
     def add_info(self, sample, alt_reads, tot_reads):
+        if sample in self.sample_info.keys():
+            print("WARN: adding the same sample twice to variant record")
         self.sample_info[sample] = (alt_reads, tot_reads)
 
     def present_in_sample(self, s):
@@ -67,10 +65,7 @@ def fix_indices(df, colname="SampleID"):
 
 
 def process_patient(name, grp):
-    # for row in grp:
-    #    print(row)
     variants = []
-    # uniq_samples = list(set(grp.sample_id.tolist()))
     for i, row in grp.iterrows():
         v = Variant(row.Chr, row.Position, row.Ref, row.Alt)
         v.add_sample(row.sample_id)
@@ -81,12 +76,10 @@ def process_patient(name, grp):
             v_ref.add_info(row.sample_id, row.AltCount, row.RefCount)
         else:
             variants.append(v)
-    # print(uniq_samples)
-    # print(variants)
     return variants
 
 
-def generate_vcf_file(name, variants, all_samples):
+def generate_vcf_file(name, variants, all_samples, outdir):
     header = "##fileformat=VCFv4.0\n"
     header += "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT"
     all_samples = sorted(all_samples)
@@ -117,20 +110,30 @@ def generate_vcf_file(name, variants, all_samples):
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("usage: tab2vcf.py [path to input]")
-        sys.exit()
-    else:
-        source = pd.read_excel(sys.argv[1])
-        split_columns = fix_indices(source)
-        cleaned_data = source.drop("SampleID", axis=1)
-        dataset = pd.concat([split_columns, cleaned_data], axis=1)
-        dataset.set_index("patient_id")
+    parser = argparse.ArgumentParser(description='convert .xlsx files to vcf.')
+    parser.add_argument('input_file',
+                        nargs=1,
+                        help="The input file (.xlsx-format)")
+    parser.add_argument('vcf_out',
+                        nargs=1,
+                        default="vcfs/",
+                        help="output directory")
 
-        grouped = dataset.groupby("patient_id")
-        for name, grp in grouped:
-            variants = process_patient(name, grp)
-            generate_vcf_file(name, variants, list(set(grp.sample_id.tolist())))
+    args = parser.parse_args()
+
+    source = pd.read_excel(args.input_file)
+    split_columns = fix_indices(source)
+    cleaned_data = source.drop("SampleID", axis=1)
+    dataset = pd.concat([split_columns, cleaned_data], axis=1)
+    dataset.set_index("patient_id")
+
+    grouped = dataset.groupby("patient_id")
+    for name, grp in grouped:
+        variants = process_patient(name, grp)
+        generate_vcf_file(name,
+                          variants,
+                          list(set(grp.sample_id.tolist())),
+                          args.vcf_out)
 
 
 if __name__ == "__main__":
