@@ -25,16 +25,16 @@ class Variant(object):
 
     def __eq__(self, other):
         return (self.chrom == other.chrom) and \
-                (self.pos == self.pos) and \
-                (self.ref == self.ref) and \
-                (self.alt == self.alt)
+                (self.pos == other.pos) and \
+                (self.ref == other.ref) and \
+                (self.alt == other.alt)
 
     def add_sample(self, new_sample):
         if new_sample not in self.samples:
             self.samples.append(new_sample)
 
-    def add_info(self, sample, alt_reads, tot_reads):
-        if sample in self.sample_info.keys():
+    def add_info(self, sample, alt_reads, tot_reads, debug=False):
+        if debug and sample in self.sample_info.keys():
             print("WARN: adding the same sample twice to variant record")
         self.sample_info[sample] = (alt_reads, tot_reads)
 
@@ -64,18 +64,23 @@ def fix_indices(df, colname="SampleID"):
     return clean_names
 
 
-def process_patient(name, grp):
+def process_patient(name, grp, debug=False):
     variants = []
     for i, row in grp.iterrows():
         v = Variant(row.Chr, row.Position, row.Ref, row.Alt)
+        if debug:
+            print("Created variant record for {}".format(v))
         v.add_sample(row.sample_id)
         v.add_info(row.sample_id, row.AltCount, row.RefCount)
         if v in variants:
+            if debug:
+                print("Variant {} present in collection!".format(v))
             v_ref = variants[variants.index(v)]
             v_ref.add_sample(row.sample_id)
             v_ref.add_info(row.sample_id, row.AltCount, row.RefCount)
         else:
             variants.append(v)
+
     return variants
 
 
@@ -121,7 +126,7 @@ def main():
 
     args = parser.parse_args()
 
-    source = pd.read_excel(args.input_file)
+    source = pd.read_excel(args.input_file[0])
     split_columns = fix_indices(source)
     cleaned_data = source.drop("SampleID", axis=1)
     dataset = pd.concat([split_columns, cleaned_data], axis=1)
@@ -133,7 +138,7 @@ def main():
         generate_vcf_file(name,
                           variants,
                           list(set(grp.sample_id.tolist())),
-                          args.vcf_out)
+                          args.vcf_out[0])
 
 
 if __name__ == "__main__":
